@@ -2,12 +2,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.ddb</groupId>
-    <artifactId>EFDumper</artifactId>
-    <version>1.0</version>
-    <name>Entity Facts Dumper</name>
+    <artifactId>efdump</artifactId>
+    <version>1.1</version>
+    <name>Entity Facts-Dumping Tool</name>
     <packaging>jar</packaging>
     <description>A tool for dumping the Entity Facts data service</description>
-    <url>https://mbuechner.github.io/efdumper/</url>
+    <url>https://mbuechner.github.io/efdump/</url>
     <licenses>
         <license>
             <name>Apache License, Version 2.0</name>
@@ -27,11 +27,11 @@
     </organization>
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/mbuechner/efdumper/issues</url>
+        <url>https://github.com/mbuechner/efdump/issues</url>
     </issueManagement>
     <scm>
-        <connection>scm:git:https://github.com/mbuechner/efdumper.git</connection>
-        <url>https://github.com/mbuechner/efdumper</url>
+        <connection>scm:git:https://github.com/mbuechner/efdump.git</connection>
+        <url>https://github.com/mbuechner/efdump</url>
     </scm>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -45,11 +45,6 @@
             <type>pom</type>
             <version>3.8.0</version>
         </dependency>  
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.25</version>
-        </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
@@ -68,7 +63,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>de.ddb.efdumper.App</mainClass>
+                            <mainClass>de.ddb.efdump.App</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>
@@ -86,7 +81,7 @@
                             <descriptorRefs>
                                 <descriptorRef>jar-with-dependencies</descriptorRef>
                             </descriptorRefs>
-                            <finalName>efdumper</finalName>
+                            <finalName>efdump</finalName>
                             <appendAssemblyId>false</appendAssemblyId>
                         </configuration>
                     </execution>
@@ -96,6 +91,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-site-plugin</artifactId>
                 <version>3.7.1</version>
+                <configuration>
+                    <outputDirectory>${basedir}/docs</outputDirectory>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
