@@ -42,16 +42,14 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
 
-        LOG.info("Start...");
-
-        String gndDumpsFolder = "dumps";
+        String gndDumpsFolder = "dumps/";
         String outputFile = "{TIMESTAMP}-EFDump-{LANG}.json";
         boolean dump = true;
 
         final Options options = new Options();
-        options.addOption("i", true, "Folder with GND Turtle Dump(s) as GZipped File(s) (file name pattern is '*.ttl.gz'). Default: dumps/");
+        options.addOption("i", true, "Folder with GND Turtle Dump(s) as GZipped File(s) (file name pattern is '*.ttl.gz'). Default: " + gndDumpsFolder);
         options.addOption("l", true, "Language(s) to dump (comma for separation, e.g. de-DE,en-US). Default: de-DE");
-        options.addOption("m", true, "Mode. Can be 'beacon' (create BEACON file) or 'dump' (dump Entity Facts data from service). Default: " + gndDumpsFolder);
+        options.addOption("m", true, "Mode. Can be 'beacon' (create BEACON file) or 'dump' (dump Entity Facts data from service). Default: dump");
         options.addOption("o", true, "File name of output file. Default: " + outputFile);
 
         try {
@@ -59,7 +57,7 @@ public class Main {
             final CommandLine cmd = parser.parse(options, args);
 
             if (cmd.hasOption("m")) {
-                dump = !cmd.getOptionValue("m").equalsIgnoreCase("beacon");
+                dump = cmd.getOptionValue("m").equalsIgnoreCase("dump");
             }
 
             if (cmd.hasOption("i")) {
@@ -68,10 +66,12 @@ public class Main {
 
             if (cmd.hasOption("o")) {
                 outputFile = cmd.getOptionValue("o");
-                if (outputFile.contains(".")) {
-                    outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.') - 1, "-{LANG}").toString();
-                } else {
-                    outputFile += "-{LANG}";
+                if (!outputFile.contains("{LANG}")) {
+                    if (outputFile.contains(".")) {
+                        outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.') - 1, "-{LANG}").toString();
+                    } else {
+                        outputFile += "-{LANG}";
+                    }
                 }
             }
 
@@ -82,11 +82,9 @@ public class Main {
                     EFDExecutor.setLANGUAGES(lang);
                 }
             }
-            LOG.info("Using GND turtle dump in file: {}", new File(gndDumpsFolder).getAbsoluteFile());
-
         } catch (ParseException ex) {
             final HelpFormatter help = new HelpFormatter();
-            help.printHelp("java -jar GNDParser.jar -i GND.ttl.gz", options);
+            help.printHelp("java -jar efdump.jar [-i <folder>] [-l <language>] [-m dump|beacon] [-o {TIMESTAMP}-EFDump-{LANG}.json]", options);
             exit(1);
         }
 
@@ -101,9 +99,14 @@ public class Main {
         if (files == null || files.length < 1) {
             LOG.error("No GND Turtle Dump as GZipped File in {} found.", gndDumpsFolder);
             exit(1);
-        } else {
-            LOG.info("Found the following input file: {}", Arrays.toString(files));
         }
+        
+        LOG.info("Start with the folowing parameter...");
+        LOG.info("Mode: {}", (dump?"dump":"beacon"));
+        LOG.info("GND Turtle Dump(s) as GZipped File(s): {}",  Arrays.toString(files));
+        LOG.info("File name of output file: {}", outputFile);
+        LOG.info("Language(s) to dump: {}", EFDExecutor.LANGUAGES);       
+        
         try {
             final EFDExecutor exe = new EFDExecutor(files, outputFile);
             if (dump) {

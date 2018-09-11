@@ -38,13 +38,20 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
-    <dependencies>       
+    <dependencies>
         <dependency>
             <groupId>org.apache.jena</groupId>
-            <artifactId>apache-jena-libs</artifactId>
+            <artifactId>apache-jena</artifactId>
             <type>pom</type>
             <version>3.8.0</version>
-        </dependency>  
+            <exclusions>
+                <exclusion>
+                    <!-- we're usuing Logback instead -->
+                    <artifactId>slf4j-log4j12</artifactId>
+                    <groupId>org.slf4j</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
@@ -59,11 +66,13 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.1.0</version>
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>de.ddb.efdump.App</mainClass>
+                            <mainClass>de.ddb.efdump.Main</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

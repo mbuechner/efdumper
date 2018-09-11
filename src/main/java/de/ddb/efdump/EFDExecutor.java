@@ -77,10 +77,10 @@ public class EFDExecutor {
 
     private static final Logger LOG = LoggerFactory.getLogger(EFDExecutor.class);
 
-    private static Set<String> LANGUAGES = new HashSet<String>() {
+    protected static Set<String> LANGUAGES = new HashSet<String>() {
         {
-            add("en-US");
-            //add("de-DE");
+            //add("en-US");
+            add("de-DE");
         }
     };
 
@@ -200,7 +200,6 @@ public class EFDExecutor {
                     try (final InputStream fis = new FileInputStream(dumpFile);
                             final GZIPInputStream gzip = new GZIPInputStream(fis)) {
                         RDFDataMgr.parse(is, gzip, Lang.TTL);
-                        LOG.info("Finished processing {}.", dumpFile.getAbsolutePath());
                     } catch (IOException ex) {
                         LOG.error(ex.getLocalizedMessage(), ex);
                     }
@@ -237,6 +236,7 @@ public class EFDExecutor {
 //                }
 
             }
+            LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i - 1, dumpFile, j);
         }
 
         EXECUTOR.shutdown();
@@ -308,7 +308,6 @@ public class EFDExecutor {
                                 final GZIPInputStream gzip = new GZIPInputStream(fis)) {
                             LOG.info("Start precessing {} ({} of {})...", dumpFile.getAbsolutePath(), Arrays.asList(GND_DUMPS_TTL).indexOf(dumpFile) + 1, GND_DUMPS_TTL.length);
                             RDFDataMgr.parse(is, gzip, Lang.TTL);
-                            LOG.info("Finished processing {}.", dumpFile.getAbsolutePath());
                         } catch (IOException ex) {
                             LOG.error(ex.getLocalizedMessage(), ex);
                         }
@@ -317,7 +316,7 @@ public class EFDExecutor {
 
                 // Start the processor on another thread
                 conExSe.submit(processor);
-                
+
                 int i = 0;
                 int j = 0;
                 String primaryId = "";
@@ -365,6 +364,7 @@ public class EFDExecutor {
                         variantIds.add(object); //
                     }
                 }
+                LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i - 1, dumpFile, j);
             }
 
             // shutdown all threads
