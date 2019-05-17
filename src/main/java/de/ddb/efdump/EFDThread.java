@@ -29,7 +29,6 @@ import static de.ddb.efdump.EFDExecutor.THREADSLEEP;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
-import static java.net.HttpURLConnection.HTTP_OK;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
@@ -50,7 +49,7 @@ public class EFDThread implements Runnable {
     private final String language;
     private final String entityType;
     private final JsonGenerator jGenerator;
-    private static final ObjectMapper OM = new ObjectMapper();
+    private final ObjectMapper OM;
 
     /**
      * A worker thread to download a JSON object from Entity Facts
@@ -67,6 +66,7 @@ public class EFDThread implements Runnable {
         this.entityType = entityType;
         this.jGenerator = jGenerator;
         this.runCount = runCount;
+        this.OM = new ObjectMapper();
     }
 
     @Override
@@ -78,7 +78,7 @@ public class EFDThread implements Runnable {
             con.setRequestProperty("Accept-Language", language);
             con.connect();
 
-            if (con.getResponseCode() != HTTP_OK) {
+            if (con.getResponseCode() != HttpURLConnection.HTTP_OK) {
                 final JsonNode node = OM.readTree(con.getErrorStream());
                 final String errorText = node.get("Error").textValue();
                 if (errorText.contains("currently not supported by Entity Facts")) {
@@ -95,7 +95,6 @@ public class EFDThread implements Runnable {
                 }
             } else {
                 final JsonNode node = OM.readTree(con.getInputStream());
-
                 synchronized (jGenerator) {
                     OM.writeTree(jGenerator, node);
                     jGenerator.writeRaw('\n');

@@ -211,6 +211,8 @@ public class EFDExecutor {
 
             int i = 0;
             int j = 0;
+            // something to avoid duplicate content
+            final List<String> processedGndIds = new ArrayList<>();
             while (iter.hasNext()) {
 
                 // Do something with each triple
@@ -218,9 +220,9 @@ public class EFDExecutor {
                 final String gndId = next.getSubject().toString().replace("http://d-nb.info/gnd/", "");
                 final String url = EF_URL.replace("{ID}", gndId);
                 final String object = next.getObject().toString();
-
-                // nur erlaubte Entitätentypen (Personen, Geografika usw.)
-                if (ALLOWED_ENTITY_TYPES.containsKey(object)) {
+                
+                // nur erlaubte Entitätentypen (Personen, Geografika usw.) und keine doppelten GND-IDs (Datensätze)
+                if (ALLOWED_ENTITY_TYPES.containsKey(object) && !processedGndIds.contains(gndId)) {
 
                     j++;
                     LANGUAGES.forEach((language) -> {
@@ -228,15 +230,15 @@ public class EFDExecutor {
                     });
                 }
 
-                if (i++ % 1_000000 == 0) {
-                    LOG.info("{} entities in {} processed, {} are accepted entity types...", i - 1, dumpFile, j);
+                if (++i % 1_000000 == 0) {
+                    LOG.info("{} entities in {} processed, {} are accepted entity types...", i, dumpFile, j);
                 }
 //                if (++i > 64) {
 //                    break;
 //                }
-
+                processedGndIds.add(gndId); // add processed GND-ID
             }
-            LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i - 1, dumpFile, j);
+            LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i, dumpFile, j);
         }
 
         EXECUTOR.shutdown();
@@ -355,8 +357,8 @@ public class EFDExecutor {
                         entityType = object;
                         variantIds = new HashSet<>();
 
-                        if (i++ % 1_000000 == 0) {
-                            LOG.info("{} entities in {} processed, {} are accepted entity types...", i - 1, dumpFile, j);
+                        if (++i % 1_000000 == 0) {
+                            LOG.info("{} entities in {} processed, {} are accepted entity types...", i, dumpFile, j);
                         }
                     }
 
@@ -364,7 +366,7 @@ public class EFDExecutor {
                         variantIds.add(object); //
                     }
                 }
-                LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i - 1, dumpFile, j);
+                LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i, dumpFile, j);
             }
 
             // shutdown all threads

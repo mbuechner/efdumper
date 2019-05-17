@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.ddb</groupId>
     <artifactId>efdump</artifactId>
-    <version>1.1</version>
+    <version>1.2</version>
     <name>Entity Facts-Dumping Tool</name>
     <packaging>jar</packaging>
     <description>A tool for dumping the Entity Facts data service</description>
