@@ -8,11 +8,12 @@ Maven documentation: https://mbuechner.github.io/efdump/
 ```sh
 > mvn clean package
 ```
+
 ### Maven documentation
-Folder: ´´´´docs/
 ```sh
 > mvn site
 ```
+Folder: `docs/`
 
 ## Run
 Print help text:
