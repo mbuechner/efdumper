@@ -19,12 +19,15 @@
  */
 package de.ddb.efdump;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import static java.lang.System.exit;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -50,10 +53,29 @@ public class Main {
         options.addOption("f", true, "Folder with CSV file(s) containing one GND-ID in each line (file name pattern is '*.csv'). Default: " + gndCsvFolder);
         options.addOption("l", true, "Language(s) to dump (comma for separation, e.g. de-DE,en-US). Default: de-DE");
         options.addOption("o", true, "File name of output file. Default: " + outputFile);
+        options.addOption("v", false, "Print version");
 
         try {
             final CommandLineParser parser = new DefaultParser();
             final CommandLine cmd = parser.parse(options, args);
+
+            if (cmd.hasOption("v")) {
+                final Properties properties = new Properties();
+                try (final BufferedReader is = new BufferedReader(new InputStreamReader(Thread.currentThread().getContextClassLoader().getResourceAsStream(".properties"), Charset.forName("UTF-8")));) {
+                    properties.load(is);
+                } catch (IOException ex) {
+                    LOG.warn("Could not get properties in file .properties");
+                }
+                final StringBuilder sb = new StringBuilder();
+                sb.append(properties.getProperty("efdumper.title", "efdump"));
+                sb.append(" (");
+                sb.append(properties.getProperty("efdumper.name", "efdump"));
+                sb.append("), Version ");
+                sb.append(properties.getProperty("efdumper.version", "<unknown>"));
+
+                System.out.println(sb.toString());
+                System.exit(0);
+            }
 
             if (cmd.hasOption("i")) {
                 gndCsvFile = cmd.getOptionValue("i");
@@ -63,17 +85,6 @@ public class Main {
                 gndCsvFolder = cmd.getOptionValue("f");
             }
 
-            if (cmd.hasOption("o")) {
-                outputFile = cmd.getOptionValue("o");
-                if (!outputFile.contains("{LANG}")) {
-                    if (outputFile.contains(".")) {
-                        outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.') - 1, "-{LANG}").toString();
-                    } else {
-                        outputFile += "-{LANG}";
-                    }
-                }
-            }
-
             if (cmd.hasOption("l")) {
                 final String[] threadCount = cmd.getOptionValue("l").split(",");
                 final Set<String> lang = new HashSet<>(Arrays.asList(threadCount));
@@ -81,10 +92,28 @@ public class Main {
                     EFDExecutor.setLANGUAGES(lang);
                 }
             }
+
+            if (cmd.hasOption("o")) {
+                outputFile = cmd.getOptionValue("o");
+                if (!outputFile.contains("{LANG}")) {
+                    if (outputFile.contains(".")) {
+                        if (EFDExecutor.LANGUAGES.size() > 1) {
+                            outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.'), "-{LANG}").toString();
+                        } else {
+                            outputFile = new StringBuilder(outputFile).toString();
+                        }
+                    } else {
+                        if (EFDExecutor.LANGUAGES.size() > 1) {
+                            outputFile += "-{LANG}";
+                        }
+                    }
+                }
+            }
+
         } catch (ParseException ex) {
             final HelpFormatter help = new HelpFormatter();
             help.printHelp("java -jar efdump.jar [-i <file> | -f <folder>] [-l <language>] [-o {TIMESTAMP}-EFDump-{LANG}.json]", options);
-            exit(1);
+            System.exit(1);
         }
         File[] files;
         if (!gndCsvFile.isEmpty()) {
@@ -97,7 +126,7 @@ public class Main {
 
             if (files == null || files.length < 1) {
                 LOG.error("No CSV file(s) in folder {} found.", gndCsvFolder);
-                exit(1);
+                System.exit(1);
             }
         }
 
@@ -112,7 +141,7 @@ public class Main {
             exe.makeDump();
         } catch (IOException ex) {
             LOG.error(ex.getMessage(), ex);
-            exit(1);
+            System.exit(1);
         }
 
         LOG.info("Done. Bye!");
