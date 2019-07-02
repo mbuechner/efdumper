@@ -1,6 +1,7 @@
 # efdump - A download/dumping tool for [Entity Facts](http://www.dnb.de/DE/Service/DigitaleDienste/EntityFacts/entityfacts_node.html) authority data service 
 
 Version: 2.0 (2019-07-02)
+
 Maven documentation: https://mbuechner.github.io/efdump/
 
 ## Compile
