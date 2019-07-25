@@ -47,12 +47,16 @@ public class Main {
         String gndCsvFolder = "input/";
         String gndCsvFile = "";
         String outputFile = "{TIMESTAMP}-EFDump-{LANG}.json";
+        int numberOfThreats = 16;
+        int maxSubmittedTasks = 100000;
 
         final Options options = new Options();
         options.addOption("i", true, "CSV file containing one GND-ID in each line.");
         options.addOption("f", true, "Folder with CSV file(s) containing one GND-ID in each line (file name pattern is '*.csv'). Default: " + gndCsvFolder);
         options.addOption("l", true, "Language(s) to dump (comma for separation, e.g. de-DE,en-US). Default: de-DE");
         options.addOption("o", true, "File name of output file. Default: " + outputFile);
+        options.addOption("t", true, "Number of parallel downloads. Default: " + numberOfThreats);
+        options.addOption("m", true, "Number of maximal submitted download tasks into queue. Default: " + maxSubmittedTasks);
         options.addOption("v", false, "Print version");
 
         try {
@@ -85,6 +89,22 @@ public class Main {
                 gndCsvFolder = cmd.getOptionValue("f");
             }
 
+            if (cmd.hasOption("t")) {
+                try {
+                    numberOfThreats = Integer.parseInt(cmd.getOptionValue("t"));
+                } catch (NumberFormatException e) {
+                    // nothing
+                }
+            }
+
+            if (cmd.hasOption("m")) {
+                try {
+                    maxSubmittedTasks = Integer.parseInt(cmd.getOptionValue("m"));
+                } catch (NumberFormatException e) {
+                    // nothing
+                }
+            }
+
             if (cmd.hasOption("l")) {
                 final String[] threadCount = cmd.getOptionValue("l").split(",");
                 final Set<String> lang = new HashSet<>(Arrays.asList(threadCount));
@@ -97,13 +117,13 @@ public class Main {
                 outputFile = cmd.getOptionValue("o");
                 if (!outputFile.contains("{LANG}")) {
                     if (outputFile.contains(".")) {
-                        if (EFDExecutor.LANGUAGES.size() > 1) {
+                        if (EFDExecutor.getLANGUAGES().size() > 1) {
                             outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.'), "-{LANG}").toString();
                         } else {
                             outputFile = new StringBuilder(outputFile).toString();
                         }
                     } else {
-                        if (EFDExecutor.LANGUAGES.size() > 1) {
+                        if (EFDExecutor.getLANGUAGES().size() > 1) {
                             outputFile += "-{LANG}";
                         }
                     }
@@ -133,12 +153,11 @@ public class Main {
         LOG.info("Start with the folowing parameter...");
         LOG.info("CSV files: {}", Arrays.toString(files));
         LOG.info("File name of output file: {}", outputFile);
-        LOG.info("Language(s) to dump: {}", EFDExecutor.LANGUAGES);
+        LOG.info("Language(s) to dump: {}", EFDExecutor.getLANGUAGES());
 
         try {
-            final EFDExecutor exe = new EFDExecutor(files, outputFile);
-
-            exe.makeDump();
+            EFDExecutor.getEFDExecutor().init(files, outputFile, numberOfThreats, maxSubmittedTasks);
+            EFDExecutor.getEFDExecutor().makeDump();
         } catch (IOException ex) {
             LOG.error(ex.getMessage(), ex);
             System.exit(1);

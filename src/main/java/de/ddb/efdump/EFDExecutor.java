@@ -25,6 +25,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import static java.net.HttpURLConnection.setFollowRedirects;
+import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
@@ -44,41 +45,63 @@ import org.slf4j.LoggerFactory;
  */
 public class EFDExecutor {
 
-    private final File[] GND_CSV_FILES;
-    private final String OUTPUT_FILE;
     protected final static String EF_URL = "http://hub.culturegraph.org/entityfacts/{ID}";
-    private final static int MAXTHREADS = 16;
     protected final static int MAXTHREADRERUN = 3;
     protected final static int THREADSLEEP = 5; // seconds
 
-    private final static ScheduledExecutorService EXECUTOR = Executors.newScheduledThreadPool(MAXTHREADS);
+    private static EFDExecutor instance;
+    private ScheduledExecutorService EXECUTOR;
+    private ThreadPoolExecutor TPE;
+    private File[] GndCsvFiles;
+    private String OutputFile;
+    private int maxThreads;
+    private int maxSubmittedTasks;
 
     private static final Logger LOG = LoggerFactory.getLogger(EFDExecutor.class);
 
-    protected static Set<String> LANGUAGES = new HashSet<String>() {
+    private static Set<String> LANGUAGES = new HashSet<String>() {
         {
             //add("en-US");
             add("de-DE");
         }
     };
 
-    public EFDExecutor(File[] GND_CSV_FILES, String OUTPUT_FILE) throws IOException {
-        this.GND_CSV_FILES = GND_CSV_FILES.clone();
-        this.OUTPUT_FILE = OUTPUT_FILE;
+    public static synchronized EFDExecutor getEFDExecutor() {
+        if (EFDExecutor.instance == null) {
+            EFDExecutor.instance = new EFDExecutor();
+        }
+        return EFDExecutor.instance;
+    }
+
+    private EFDExecutor() {
+    }
+
+    public void init(File[] GND_CSV_FILES, String OUTPUT_FILE, int maxThreads, int maxSubmittedTasks) throws IOException {
+        this.GndCsvFiles = GND_CSV_FILES.clone();
+        this.OutputFile = OUTPUT_FILE;
+        this.maxThreads = maxThreads;
+        this.maxSubmittedTasks = maxSubmittedTasks;
         setFollowRedirects(true);
+
+        EXECUTOR = Executors.newScheduledThreadPool(maxThreads);
+        TPE = (ThreadPoolExecutor) EXECUTOR;
     }
 
     public void makeDump() throws IOException {
-
-        final ScheduledExecutorService conExSe = Executors.newScheduledThreadPool(GND_CSV_FILES.length + 1); // one parser for every dump AND one for monitoring
+        final ScheduledExecutorService conExSe = Executors.newScheduledThreadPool(GndCsvFiles.length + 1); // one parser for every dump AND one for monitoring
 
         // add monitoring
-        final Runnable queueCounter = () -> {
-            final ThreadPoolExecutor tpe = (ThreadPoolExecutor) EXECUTOR;
-            int active = tpe.getQueue().size() >= MAXTHREADS ? MAXTHREADS : tpe.getQueue().size();
-            int inQueue = Integer.max(tpe.getQueue().size() - tpe.getPoolSize(), 0) + active;
-
-            LOG.info("Queue size: {} running of {}", active, inQueue);
+        final Runnable queueCounter = new Runnable() {
+            @Override
+            public void run() {
+                final int active = TPE.getQueue().size() >= maxThreads ? maxThreads : TPE.getQueue().size();
+                final int inQueue = Integer.max(TPE.getQueue().size() - TPE.getPoolSize(), 0) + active;
+                final long completed = TPE.getCompletedTaskCount();
+                LOG.info("Status: {} processed. {} running. {} in queue.",
+                        completed,
+                        active,
+                        (inQueue == maxSubmittedTasks) ? inQueue + " (MAX)" : inQueue);
+            }
         };
         conExSe.scheduleWithFixedDelay(queueCounter, 0, 10, TimeUnit.SECONDS); // log every 10 Sek.
 
@@ -89,9 +112,9 @@ public class EFDExecutor {
 
         // init FileOutputStreams and JsonGenerator
         final String timestamp = new SimpleDateFormat("yyyyMMdd").format(new Date());
-        for (String language : LANGUAGES) {
+        for (String language : getLANGUAGES()) {
 
-            final String filename = OUTPUT_FILE.replace("{TIMESTAMP}", timestamp).replace("{LANG}", language);
+            final String filename = OutputFile.replace("{TIMESTAMP}", timestamp).replace("{LANG}", language);
             fn.put(language, filename);
 
             final FileOutputStream fo = new FileOutputStream(filename);
@@ -107,9 +130,9 @@ public class EFDExecutor {
 
         int sum = 0;
 
-        for (File dumpFile : GND_CSV_FILES) {
+        for (File dumpFile : GndCsvFiles) {
 
-            final FileReader filereader = new FileReader(dumpFile);
+            final FileReader filereader = new FileReader(dumpFile, Charset.forName("UTF-8"));
             final CSVReader csvReader = new CSVReader(filereader);
             String[] nextRecord;
 
@@ -117,11 +140,14 @@ public class EFDExecutor {
                 if (nextRecord.length > 0) {
                     final String gndId = nextRecord[0];
                     final String url = EF_URL.replace("{ID}", gndId);
-                    LANGUAGES.forEach((language) -> {
+                    getLANGUAGES().forEach((language) -> {
                         EXECUTOR.submit(new EFDThread(url, language, jg.get(language), 1));
                     });
                     ++sum;
                 }
+
+                // wait until submit more task (heap space problem)
+                while (TPE.getQueue().size() >= maxSubmittedTasks);
             }
         }
         EXECUTOR.shutdown();
@@ -141,7 +167,7 @@ public class EFDExecutor {
         }
 
         // close all FileOutputStreams and JsonGenerator
-        for (String language : LANGUAGES) {
+        for (String language : getLANGUAGES()) {
             jg.get(language).writeEndArray();
             jg.get(language).flush();
             jg.get(language).close();
@@ -155,7 +181,7 @@ public class EFDExecutor {
     /**
      * @return the executor
      */
-    public static ScheduledExecutorService getExecutor() {
+    public ScheduledExecutorService getExecutor() {
         return EXECUTOR;
     }
 
@@ -164,6 +190,13 @@ public class EFDExecutor {
      */
     public static void setLANGUAGES(Set<String> aLANGUAGES) {
         LANGUAGES = aLANGUAGES;
+    }
+
+    /**
+     * @return the LANGUAGES
+     */
+    public static Set<String> getLANGUAGES() {
+        return LANGUAGES;
     }
 
 }

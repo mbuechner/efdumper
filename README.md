@@ -1,6 +1,6 @@
 # efdump - A download/dumping tool for [Entity Facts](http://www.dnb.de/DE/Service/DigitaleDienste/EntityFacts/entityfacts_node.html) authority data service 
 
-Version: 2.0 (2019-07-02)
+Version: 2.1 (2019-07-25)
 
 Maven documentation: https://mbuechner.github.io/efdump/
 
@@ -25,7 +25,9 @@ usage: java -jar efdump.jar [-i <file> | -f <folder>] [-l <language>] [-o {TIMES
  -f <arg>   Folder with CSV file(s) containing one GND-ID in each line (file name pattern is '*.csv'). Default: input/
  -i <arg>   CSV file containing one GND-ID in each line.
  -l <arg>   Language(s) to dump (comma for separation, e.g. de-DE,en-US). Default: de-DE
+ -m <arg>   Number of maximal submitted download tasks. Default: 100000
  -o <arg>   File name of output file. Default: {TIMESTAMP}-EFDump-{LANG}.json
+ -t <arg>   Number of parallel downloads. Default: 16
  -v         Print version
 ```
 Example for simplest use:
@@ -50,7 +52,6 @@ Content of file `gndidns.csv`:
 
 ## Configuration
 ```
-	MAXTHREADS = 16
 	MAXTHREADRERUN = 3
 	THREADSLEEP = 1500
 ```

@@ -102,27 +102,27 @@ public class EFDThread implements Runnable {
             }
         } catch (JsonMappingException | JsonParseException e) {
             if (runCount >= MAXTHREADRERUN) {
-                LOG.error("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.error("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getMessage());
                 done = true; // no need to try again
             } else {
-                LOG.warn("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.warn("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getMessage());
             }
         } catch (MalformedURLException e) {
             LOG.error("{}: Malformed URL.", url, e);
             done = true; // no need to try again
         } catch (ConnectException e) {
             if (runCount >= MAXTHREADRERUN) {
-                LOG.error("{}: Server did not response. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.error("{}: Server did not respond. {} attempt(s). {}", url, runCount, e.getMessage());
                 done = true; // no need to try again
             } else {
-                LOG.warn("{}: Server did not response. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.warn("{}: Server did not respond. {} attempt(s). {}", url, runCount, e.getMessage());
             }
         } catch (IOException e) {
             if (runCount >= MAXTHREADRERUN) {
-                LOG.error("{}: Writing data failed. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.error("{}: Writing data failed. {} attempt(s). {}", url, runCount, e.getMessage());
                 done = true; // no need to try again
             } else {
-                LOG.warn("{}: Server did not response. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.warn("{}: Writing data failed. {} attempt(s). {}", url, runCount, e.getMessage());
             }
         } finally {
             if (con != null) {
@@ -131,7 +131,7 @@ public class EFDThread implements Runnable {
 
         }
         if (!done && runCount < MAXTHREADRERUN) {
-            EFDExecutor.getExecutor().schedule(
+            EFDExecutor.getEFDExecutor().getExecutor().schedule(
                     new EFDThread(url, language, jGenerator, runCount + 1), THREADSLEEP, TimeUnit.SECONDS
             );
         }
