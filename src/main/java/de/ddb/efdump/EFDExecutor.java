@@ -21,9 +21,10 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.util.MinimalPrettyPrinter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import static java.net.HttpURLConnection.setFollowRedirects;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
@@ -132,7 +133,7 @@ public class EFDExecutor {
 
         for (File dumpFile : GndCsvFiles) {
 
-            final FileReader filereader = new FileReader(dumpFile, Charset.forName("UTF-8"));
+            final InputStreamReader filereader = new InputStreamReader(new FileInputStream(dumpFile), Charset.forName("UTF-8"));
             final CSVReader csvReader = new CSVReader(filereader);
             String[] nextRecord;
 
