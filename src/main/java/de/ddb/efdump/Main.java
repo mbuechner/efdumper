@@ -65,7 +65,7 @@ public class Main {
 
             if (cmd.hasOption("v")) {
                 final Properties properties = new Properties();
-                try (final BufferedReader is = new BufferedReader(new InputStreamReader(Thread.currentThread().getContextClassLoader().getResourceAsStream(".properties"), Charset.forName("UTF-8")));) {
+                try (final BufferedReader is = new BufferedReader(new InputStreamReader(Main.class.getResourceAsStream("/.properties"), Charset.forName("UTF-8")))) {
                     properties.load(is);
                 } catch (IOException ex) {
                     LOG.warn("Could not get properties in file .properties");
