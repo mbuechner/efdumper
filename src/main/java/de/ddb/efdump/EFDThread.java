@@ -47,7 +47,6 @@ public class EFDThread implements Runnable {
     private final int runCount; // re-run counter
     private final String url;
     private final String language;
-    private final String entityType;
     private final JsonGenerator jGenerator;
     private final ObjectMapper OM;
 
@@ -56,14 +55,12 @@ public class EFDThread implements Runnable {
      *
      * @param url - URL to download from
      * @param language - Language to request
-     * @param entityType - Entity type as GND URI (for statistics)
      * @param jGenerator - Dump file to save data
      * @param runCount Which run is that?
      */
-    public EFDThread(String url, String language, String entityType, JsonGenerator jGenerator, int runCount) {
+    public EFDThread(String url, String language, JsonGenerator jGenerator, int runCount) {
         this.url = url;
         this.language = language;
-        this.entityType = entityType;
         this.jGenerator = jGenerator;
         this.runCount = runCount;
         this.OM = new ObjectMapper();
@@ -102,33 +99,30 @@ public class EFDThread implements Runnable {
                     LOG.debug("{}: Successfully written to {} dump file", url, language);
                 }
                 done = true; // all went fine so we escape here
-                synchronized (EFDExecutor.getALLOWED_ENTITY_TYPES()) {
-                    EFDExecutor.getALLOWED_ENTITY_TYPES().put(entityType, EFDExecutor.getALLOWED_ENTITY_TYPES().get(entityType) + 1);
-                }
             }
         } catch (JsonMappingException | JsonParseException e) {
             if (runCount >= MAXTHREADRERUN) {
-                LOG.error("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.error("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getMessage());
                 done = true; // no need to try again
             } else {
-                LOG.warn("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.warn("{}: JSON of is malformed. {} attempt(s). {}", url, runCount, e.getMessage());
             }
         } catch (MalformedURLException e) {
             LOG.error("{}: Malformed URL.", url, e);
             done = true; // no need to try again
         } catch (ConnectException e) {
             if (runCount >= MAXTHREADRERUN) {
-                LOG.error("{}: Server did not response. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.error("{}: Server did not respond. {} attempt(s). {}", url, runCount, e.getMessage());
                 done = true; // no need to try again
             } else {
-                LOG.warn("{}: Server did not response. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.warn("{}: Server did not respond. {} attempt(s). {}", url, runCount, e.getMessage());
             }
         } catch (IOException e) {
             if (runCount >= MAXTHREADRERUN) {
-                LOG.error("{}: Writing data failed. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.error("{}: Writing data failed. {} attempt(s). {}", url, runCount, e.getMessage());
                 done = true; // no need to try again
             } else {
-                LOG.warn("{}: Server did not response. {} attempt(s). {}", url, runCount, e.getLocalizedMessage());
+                LOG.warn("{}: Writing data failed. {} attempt(s). {}", url, runCount, e.getMessage());
             }
         } finally {
             if (con != null) {
@@ -137,8 +131,8 @@ public class EFDThread implements Runnable {
 
         }
         if (!done && runCount < MAXTHREADRERUN) {
-            EFDExecutor.getExecutor().schedule(
-                    new EFDThread(url, language, entityType, jGenerator, runCount + 1), THREADSLEEP, TimeUnit.SECONDS
+            EFDExecutor.getEFDExecutor().getExecutor().schedule(
+                    new EFDThread(url, language, jGenerator, runCount + 1), THREADSLEEP, TimeUnit.SECONDS
             );
         }
     }

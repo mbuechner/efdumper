@@ -15,44 +15,28 @@
  */
 package de.ddb.efdump;
 
+import au.com.bytecode.opencsv.CSVReader;
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.util.MinimalPrettyPrinter;
-import com.github.jsonldjava.shaded.com.google.common.util.concurrent.ThreadFactoryBuilder;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStreamWriter;
+import java.io.InputStreamReader;
 import static java.net.HttpURLConnection.setFollowRedirects;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.zip.GZIPInputStream;
-import org.apache.jena.graph.Triple;
-import org.apache.jena.riot.Lang;
-import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.riot.lang.PipedRDFIterator;
-import org.apache.jena.riot.lang.PipedRDFStream;
-import org.apache.jena.riot.lang.PipedTriplesStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,105 +46,63 @@ import org.slf4j.LoggerFactory;
  */
 public class EFDExecutor {
 
-    private final File[] GND_DUMPS_TTL;
-    private final String OUTPUT_FILE;
     protected final static String EF_URL = "http://hub.culturegraph.org/entityfacts/{ID}";
-    private final static int MAXTHREADS = 16;
     protected final static int MAXTHREADRERUN = 3;
     protected final static int THREADSLEEP = 5; // seconds
 
-    private final static ThreadFactory WORKER_FACTORY = new ThreadFactoryBuilder()
-            .setNameFormat("Downloader-%d")
-            .setDaemon(true)
-            .build();
-    private final static ScheduledExecutorService EXECUTOR = Executors.newScheduledThreadPool(MAXTHREADS, WORKER_FACTORY);
+    private static EFDExecutor instance;
+    private ScheduledExecutorService EXECUTOR;
+    private ThreadPoolExecutor TPE;
+    private File[] GndCsvFiles;
+    private String OutputFile;
+    private int maxThreads;
+    private int maxSubmittedTasks;
 
     private static final Logger LOG = LoggerFactory.getLogger(EFDExecutor.class);
 
-    protected static Set<String> LANGUAGES = new HashSet<String>() {
+    private static Set<String> LANGUAGES = new HashSet<String>() {
         {
             //add("en-US");
             add("de-DE");
         }
     };
 
-    private final static Map<String, Integer> ALLOWED_ENTITY_TYPES = Collections.synchronizedMap(new HashMap<String, Integer>() {
-        {
-            put("http://d-nb.info/standards/elementset/gnd#DifferentiatedPerson", 0); // 4,55 Mio
-            //Subklassen
-            put("http://d-nb.info/standards/elementset/gnd#CollectivePseudonym", 0);
-            put("http://d-nb.info/standards/elementset/gnd#Gods", 0);
-            put("http://d-nb.info/standards/elementset/gnd#LiteraryOrLegendaryCharacter", 0);
-            put("http://d-nb.info/standards/elementset/gnd#Pseudonym", 0);
-            put("http://d-nb.info/standards/elementset/gnd#RoyalOrMemberOfARoyalHouse", 0);
-            put("http://d-nb.info/standards/elementset/gnd#Spirits", 0);
-
-            put("http://d-nb.info/standards/elementset/gnd#CorporateBody", 0); // 1,38 Mio.
-            //Subklassen
-            put("http://d-nb.info/standards/elementset/gnd#Company", 0);
-            put("http://d-nb.info/standards/elementset/gnd#FictiveCorporateBody", 0);
-            put("http://d-nb.info/standards/elementset/gnd#MusicalCorporateBody", 0);
-            put("http://d-nb.info/standards/elementset/gnd#OrganOfCorporateBody", 0);
-            put("http://d-nb.info/standards/elementset/gnd#ProjectOrProgram", 0);
-            put("http://d-nb.info/standards/elementset/gnd#ReligiousAdministrativeUnit", 0);
-            put("http://d-nb.info/standards/elementset/gnd#ReligiousCorporateBody", 0);
-
-            put("http://d-nb.info/standards/elementset/gnd#Family", 0);
-            //Subklassen
-            // keine
-
-            put("http://d-nb.info/standards/elementset/gnd#PlaceOrGeographicName", 0);
-            //Subklassen
-            put("http://d-nb.info/standards/elementset/gnd#Company", 0);
-            put("http://d-nb.info/standards/elementset/gnd#AdministrativeUnit", 0);
-            put("http://d-nb.info/standards/elementset/gnd#BuildingOrMemorial", 0);
-            put("http://d-nb.info/standards/elementset/gnd#Country", 0);
-            put("http://d-nb.info/standards/elementset/gnd#ExtraterrestrialTerritory", 0);
-            put("http://d-nb.info/standards/elementset/gnd#FictivePlace", 0);
-            put("http://d-nb.info/standards/elementset/gnd#MemberState", 0);
-            put("http://d-nb.info/standards/elementset/gnd#NameOfSmallGeographicUnitLyingWithinAnotherGeographicUnit", 0);
-            put("http://d-nb.info/standards/elementset/gnd#NaturalGeographicUnit", 0);
-            put("http://d-nb.info/standards/elementset/gnd#ReligiousTerritory", 0);
-            put("http://d-nb.info/standards/elementset/gnd#TerritorialCorporateBodyOrAdministrativeUnit", 0);
-            put("http://d-nb.info/standards/elementset/gnd#WayBorderOrLine", 0);
+    public static synchronized EFDExecutor getEFDExecutor() {
+        if (EFDExecutor.instance == null) {
+            EFDExecutor.instance = new EFDExecutor();
         }
-    });
+        return EFDExecutor.instance;
+    }
 
-    private final static List<String> BEACON_HEADER = new ArrayList<String>() {
-        {
-            add("#FORMAT: BEACON");
-            add("#PREFIX: http://d-nb.info/gnd/");
-            add("#TARGET: http://d-nb.info/gnd/");
-            add("#CONTACT: Gemeinsame Normdatei (GND) <gnd-info@dnb.de>");
-            add("#INSTITUTION: Deutsche Nationalbibliothek");
-            add("#DESCRIPTION: List of deprecated GND URIs to their valid primary GND URI");
-            add("#TIMESTAMP: {DATE}");
-            add("#UPDATE: monthly");
-        }
-    };
+    private EFDExecutor() {
+    }
 
-    public EFDExecutor(File[] GND_DUMPS_TTL, String OUTPUT_FILE) throws IOException {
-        this.GND_DUMPS_TTL = GND_DUMPS_TTL.clone();
-        this.OUTPUT_FILE = OUTPUT_FILE;
+    public void init(File[] GND_CSV_FILES, String OUTPUT_FILE, int maxThreads, int maxSubmittedTasks) throws IOException {
+        this.GndCsvFiles = GND_CSV_FILES.clone();
+        this.OutputFile = OUTPUT_FILE;
+        this.maxThreads = maxThreads;
+        this.maxSubmittedTasks = maxSubmittedTasks;
         setFollowRedirects(true);
+
+        EXECUTOR = Executors.newScheduledThreadPool(maxThreads);
+        TPE = (ThreadPoolExecutor) EXECUTOR;
     }
 
     public void makeDump() throws IOException {
-
-        final ThreadFactory controllerFactory = new ThreadFactoryBuilder()
-                .setNameFormat("Controller-%d")
-                .setDaemon(true)
-                .build();
-
-        final ScheduledExecutorService conExSe = Executors.newScheduledThreadPool(GND_DUMPS_TTL.length + 1, controllerFactory); // one parser for every dump AND one for monitoring
+        final ScheduledExecutorService conExSe = Executors.newScheduledThreadPool(GndCsvFiles.length + 1); // one parser for every dump AND one for monitoring
 
         // add monitoring
-        final Runnable queueCounter = () -> {
-            final ThreadPoolExecutor tpe = (ThreadPoolExecutor) EXECUTOR;
-            int active = tpe.getQueue().size() >= MAXTHREADS ? MAXTHREADS : tpe.getQueue().size();
-            int inQueue = Integer.max(tpe.getQueue().size() - tpe.getPoolSize(), 0) + active;
-
-            LOG.info("Queue size: {} running of {}", active, inQueue);
+        final Runnable queueCounter = new Runnable() {
+            @Override
+            public void run() {
+                final int active = TPE.getQueue().size() >= maxThreads ? maxThreads : TPE.getQueue().size();
+                final int inQueue = Integer.max(TPE.getQueue().size() - TPE.getPoolSize(), 0) + active;
+                final long completed = TPE.getCompletedTaskCount();
+                LOG.info("Status: {} processed. {} running. {} in queue.",
+                        completed,
+                        active,
+                        (inQueue == maxSubmittedTasks) ? inQueue + " (MAX)" : inQueue);
+            }
         };
         conExSe.scheduleWithFixedDelay(queueCounter, 0, 10, TimeUnit.SECONDS); // log every 10 Sek.
 
@@ -171,9 +113,9 @@ public class EFDExecutor {
 
         // init FileOutputStreams and JsonGenerator
         final String timestamp = new SimpleDateFormat("yyyyMMdd").format(new Date());
-        for (String language : LANGUAGES) {
+        for (String language : getLANGUAGES()) {
 
-            final String filename = OUTPUT_FILE.replace("{TIMESTAMP}", timestamp).replace("{LANG}", language);
+            final String filename = OutputFile.replace("{TIMESTAMP}", timestamp).replace("{LANG}", language);
             fn.put(language, filename);
 
             final FileOutputStream fo = new FileOutputStream(filename);
@@ -187,60 +129,28 @@ public class EFDExecutor {
             LOG.info("Language {} will be in file {}...", language, filename);
         }
 
-        for (File dumpFile : GND_DUMPS_TTL) {
+        int sum = 0;
 
-            final PipedRDFIterator<Triple> iter = new PipedRDFIterator<>();
-            final PipedRDFStream<Triple> is = new PipedTriplesStream(iter);
+        for (File dumpFile : GndCsvFiles) {
 
-            // Create a runnable for our parser thread
-            final Runnable parser = new Runnable() {
-                @Override
-                public void run() {
-                    LOG.info("Start reading {} ({} of {})...", dumpFile.getAbsolutePath(), Arrays.asList(GND_DUMPS_TTL).indexOf(dumpFile) + 1, GND_DUMPS_TTL.length);
-                    try (final InputStream fis = new FileInputStream(dumpFile);
-                            final GZIPInputStream gzip = new GZIPInputStream(fis)) {
-                        RDFDataMgr.parse(is, gzip, Lang.TTL);
-                    } catch (IOException ex) {
-                        LOG.error(ex.getLocalizedMessage(), ex);
-                    }
-                }
-            };
+            final InputStreamReader filereader = new InputStreamReader(new FileInputStream(dumpFile), Charset.forName("UTF-8"));
+            final CSVReader csvReader = new CSVReader(filereader);
+            String[] nextRecord;
 
-            // Start the parser on another thread
-            conExSe.submit(parser);
-
-            int i = 0;
-            int j = 0;
-            // something to avoid duplicate content
-            final List<String> processedGndIds = new ArrayList<>();
-            while (iter.hasNext()) {
-
-                // Do something with each triple
-                final Triple next = iter.next();
-                final String gndId = next.getSubject().toString().replace("http://d-nb.info/gnd/", "");
-                final String url = EF_URL.replace("{ID}", gndId);
-                final String object = next.getObject().toString();
-                
-                // nur erlaubte Entitätentypen (Personen, Geografika usw.) und keine doppelten GND-IDs (Datensätze)
-                if (ALLOWED_ENTITY_TYPES.containsKey(object) && !processedGndIds.contains(gndId)) {
-
-                    j++;
-                    LANGUAGES.forEach((language) -> {
-                        EXECUTOR.submit(new EFDThread(url, language, object, jg.get(language), 1));
+            while ((nextRecord = csvReader.readNext()) != null) {
+                if (nextRecord.length > 0) {
+                    final String gndId = nextRecord[0];
+                    final String url = EF_URL.replace("{ID}", gndId);
+                    getLANGUAGES().forEach((language) -> {
+                        EXECUTOR.submit(new EFDThread(url, language, jg.get(language), 1));
                     });
+                    ++sum;
                 }
 
-                if (++i % 1_000000 == 0) {
-                    LOG.info("{} entities in {} processed, {} are accepted entity types...", i, dumpFile, j);
-                }
-//                if (++i > 64) {
-//                    break;
-//                }
-                processedGndIds.add(gndId); // add processed GND-ID
+                // wait until submit more task (heap space problem)
+                while (TPE.getQueue().size() >= maxSubmittedTasks);
             }
-            LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i, dumpFile, j);
         }
-
         EXECUTOR.shutdown();
 
         try {
@@ -258,7 +168,7 @@ public class EFDExecutor {
         }
 
         // close all FileOutputStreams and JsonGenerator
-        for (String language : LANGUAGES) {
+        for (String language : getLANGUAGES()) {
             jg.get(language).writeEndArray();
             jg.get(language).flush();
             jg.get(language).close();
@@ -266,133 +176,14 @@ public class EFDExecutor {
             fos.get(language).close();
         }
 
-        int sum = 0;
-        for (Entry<String, Integer> e : ALLOWED_ENTITY_TYPES.entrySet()) {
-            sum = sum + e.getValue();
-        }
-
-        LOG.info("Statistics: {} entities dumped from Entity Facts", sum);
-        LOG.info("Statistics: {}", ALLOWED_ENTITY_TYPES);
-    }
-
-    public void makeBeacon() throws IOException {
-
-        final ThreadFactory conFact = new ThreadFactoryBuilder()
-                .setNameFormat("Controller-%d")
-                .setDaemon(true)
-                .build();
-
-        final ExecutorService conExSe = Executors.newFixedThreadPool(GND_DUMPS_TTL.length + 1, conFact); // one parser and one processor
-        final String filename = OUTPUT_FILE.replace("{TIMESTAMP}", new SimpleDateFormat("yyyyMMdd").format(new Date()));
-        LOG.info("Output file will be {}", filename);
-
-        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(
-                new FileOutputStream(filename), Charset.forName("UTF-8")))) {
-
-            for (String line : BEACON_HEADER) {
-                bw.write(line.replace("{DATE}", new SimpleDateFormat("yyyy-MM-dd").format(new Date())));
-                bw.newLine();
-            }
-            bw.flush();
-
-            // do it for every dump file
-            for (File dumpFile : GND_DUMPS_TTL) {
-
-                // add parsers
-                final PipedRDFIterator<Triple> iter = new PipedRDFIterator<>();
-                final PipedRDFStream<Triple> is = new PipedTriplesStream(iter);
-
-                final Runnable processor = new Runnable() {
-                    @Override
-                    public void run() {
-
-                        try (final InputStream fis = new FileInputStream(dumpFile);
-                                final GZIPInputStream gzip = new GZIPInputStream(fis)) {
-                            LOG.info("Start precessing {} ({} of {})...", dumpFile.getAbsolutePath(), Arrays.asList(GND_DUMPS_TTL).indexOf(dumpFile) + 1, GND_DUMPS_TTL.length);
-                            RDFDataMgr.parse(is, gzip, Lang.TTL);
-                        } catch (IOException ex) {
-                            LOG.error(ex.getLocalizedMessage(), ex);
-                        }
-                    }
-                };
-
-                // Start the processor on another thread
-                conExSe.submit(processor);
-
-                int i = 0;
-                int j = 0;
-                String primaryId = "";
-                String entityType = "";
-                Set<String> variantIds = new HashSet<>();
-
-                while (iter.hasNext()) {
-                    // Do something with each triple
-                    final Triple next = iter.next();
-
-                    final String subject = next.getSubject().toString();
-                    final String object = next.getObject().toString();
-                    final String predicate = next.getPredicate().toString();
-
-                    if (!primaryId.equals(subject)) {
-                        if (getALLOWED_ENTITY_TYPES().containsKey(entityType)) {
-                            if (!variantIds.isEmpty()) {
-
-                                // write statistics
-                                getALLOWED_ENTITY_TYPES().put(entityType, getALLOWED_ENTITY_TYPES().get(entityType) + 1);
-
-                                for (String variantID : variantIds) {
-                                    try {
-                                        variantID = variantID.replace("http://d-nb.info/gnd/", "");
-                                        variantID = variantID.replaceAll("\"", "");
-                                        bw.write(variantID + "||" + primaryId.replace("http://d-nb.info/gnd/", ""));
-                                        bw.newLine();
-                                    } catch (IOException e) {
-                                        LOG.error("Could not write line to {}. {}", filename, e.getLocalizedMessage());
-                                    }
-                                }
-                            }
-                            ++j;
-                        }
-                        primaryId = subject;
-                        entityType = object;
-                        variantIds = new HashSet<>();
-
-                        if (++i % 1_000000 == 0) {
-                            LOG.info("{} entities in {} processed, {} are accepted entity types...", i, dumpFile, j);
-                        }
-                    }
-
-                    if (predicate.equals("http://d-nb.info/standards/elementset/dnb#deprecatedUri")) {
-                        variantIds.add(object); //
-                    }
-                }
-                LOG.info("Finished processing {} entities in {} processed, {} are accepted entity types.", i, dumpFile, j);
-            }
-
-            // shutdown all threads
-            conExSe.shutdown();
-        }
-        // wait until's done
-        try {
-            conExSe.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-        } catch (InterruptedException e) {
-            // nothing
-        }
-        LOG.info("Statistics: {}", ALLOWED_ENTITY_TYPES);
+        LOG.info("Statistics: {} entities processed", sum);
     }
 
     /**
      * @return the executor
      */
-    public static ScheduledExecutorService getExecutor() {
+    public ScheduledExecutorService getExecutor() {
         return EXECUTOR;
-    }
-
-    /**
-     * @return the ALLOWED_ENTITY_TYPES
-     */
-    public static Map<String, Integer> getALLOWED_ENTITY_TYPES() {
-        return ALLOWED_ENTITY_TYPES;
     }
 
     /**
@@ -400,6 +191,13 @@ public class EFDExecutor {
      */
     public static void setLANGUAGES(Set<String> aLANGUAGES) {
         LANGUAGES = aLANGUAGES;
+    }
+
+    /**
+     * @return the LANGUAGES
+     */
+    public static Set<String> getLANGUAGES() {
+        return LANGUAGES;
     }
 
 }

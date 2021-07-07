@@ -19,13 +19,15 @@
  */
 package de.ddb.efdump;
 
+import java.io.BufferedReader;
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.IOException;
-import static java.lang.System.exit;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -42,36 +44,64 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
 
-        String gndDumpsFolder = "dumps/";
+        String gndCsvFolder = "input/";
+        String gndCsvFile = "";
         String outputFile = "{TIMESTAMP}-EFDump-{LANG}.json";
-        boolean dump = true;
+        int numberOfThreats = 16;
+        int maxSubmittedTasks = 100000;
 
         final Options options = new Options();
-        options.addOption("i", true, "Folder with GND Turtle Dump(s) as GZipped File(s) (file name pattern is '*.ttl.gz'). Default: " + gndDumpsFolder);
+        options.addOption("i", true, "CSV file containing one GND-ID in each line.");
+        options.addOption("f", true, "Folder with CSV file(s) containing one GND-ID in each line (file name pattern is '*.csv'). Default: " + gndCsvFolder);
         options.addOption("l", true, "Language(s) to dump (comma for separation, e.g. de-DE,en-US). Default: de-DE");
-        options.addOption("m", true, "Mode. Can be 'beacon' (create BEACON file) or 'dump' (dump Entity Facts data from service). Default: dump");
         options.addOption("o", true, "File name of output file. Default: " + outputFile);
+        options.addOption("t", true, "Number of parallel downloads. Default: " + numberOfThreats);
+        options.addOption("m", true, "Number of maximal submitted download tasks into queue. Default: " + maxSubmittedTasks);
+        options.addOption("v", false, "Print version");
 
         try {
             final CommandLineParser parser = new DefaultParser();
             final CommandLine cmd = parser.parse(options, args);
 
-            if (cmd.hasOption("m")) {
-                dump = cmd.getOptionValue("m").equalsIgnoreCase("dump");
+            if (cmd.hasOption("v")) {
+                final Properties properties = new Properties();
+                try (final BufferedReader is = new BufferedReader(new InputStreamReader(Main.class.getResourceAsStream("/.properties"), Charset.forName("UTF-8")))) {
+                    properties.load(is);
+                } catch (IOException ex) {
+                    LOG.warn("Could not get properties in file .properties");
+                }
+                final StringBuilder sb = new StringBuilder();
+                sb.append(properties.getProperty("efdumper.title", "efdump"));
+                sb.append(" (");
+                sb.append(properties.getProperty("efdumper.name", "efdump"));
+                sb.append("), Version ");
+                sb.append(properties.getProperty("efdumper.version", "<unknown>"));
+
+                System.out.println(sb.toString());
+                System.exit(0);
             }
 
             if (cmd.hasOption("i")) {
-                gndDumpsFolder = cmd.getOptionValue("i");
+                gndCsvFile = cmd.getOptionValue("i");
             }
 
-            if (cmd.hasOption("o")) {
-                outputFile = cmd.getOptionValue("o");
-                if (!outputFile.contains("{LANG}")) {
-                    if (outputFile.contains(".")) {
-                        outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.') - 1, "-{LANG}").toString();
-                    } else {
-                        outputFile += "-{LANG}";
-                    }
+            if (cmd.hasOption("f")) {
+                gndCsvFolder = cmd.getOptionValue("f");
+            }
+
+            if (cmd.hasOption("t")) {
+                try {
+                    numberOfThreats = Integer.parseInt(cmd.getOptionValue("t"));
+                } catch (NumberFormatException e) {
+                    // nothing
+                }
+            }
+
+            if (cmd.hasOption("m")) {
+                try {
+                    maxSubmittedTasks = Integer.parseInt(cmd.getOptionValue("m"));
+                } catch (NumberFormatException e) {
+                    // nothing
                 }
             }
 
@@ -82,41 +112,55 @@ public class Main {
                     EFDExecutor.setLANGUAGES(lang);
                 }
             }
+
+            if (cmd.hasOption("o")) {
+                outputFile = cmd.getOptionValue("o");
+                if (!outputFile.contains("{LANG}")) {
+                    if (outputFile.contains(".")) {
+                        if (EFDExecutor.getLANGUAGES().size() > 1) {
+                            outputFile = new StringBuilder(outputFile).insert(outputFile.lastIndexOf('.'), "-{LANG}").toString();
+                        } else {
+                            outputFile = new StringBuilder(outputFile).toString();
+                        }
+                    } else {
+                        if (EFDExecutor.getLANGUAGES().size() > 1) {
+                            outputFile += "-{LANG}";
+                        }
+                    }
+                }
+            }
+
         } catch (ParseException ex) {
             final HelpFormatter help = new HelpFormatter();
-            help.printHelp("java -jar efdump.jar [-i <folder>] [-l <language>] [-m dump|beacon] [-o {TIMESTAMP}-EFDump-{LANG}.json]", options);
-            exit(1);
+            help.printHelp("java -jar efdump.jar [-i <file> | -f <folder>] [-l <language>] [-o {TIMESTAMP}-EFDump-{LANG}.json]", options);
+            System.exit(1);
         }
+        File[] files;
+        if (!gndCsvFile.isEmpty()) {
+            files = new File[1];
+            files[0] = new File(gndCsvFile);
 
-        final File dir = new File(gndDumpsFolder);
-        final File[] files = dir.listFiles(new FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                return name.toLowerCase(Locale.GERMAN).endsWith(".ttl.gz");
+        } else {
+            final File dir = new File(gndCsvFolder);
+            files = dir.listFiles((File d, String name) -> name.toLowerCase(Locale.GERMAN).endsWith(".csv"));
+
+            if (files == null || files.length < 1) {
+                LOG.error("No CSV file(s) in folder {} found.", gndCsvFolder);
+                System.exit(1);
             }
-        });
-
-        if (files == null || files.length < 1) {
-            LOG.error("No GND Turtle Dump as GZipped File in {} found.", gndDumpsFolder);
-            exit(1);
         }
-        
+
         LOG.info("Start with the folowing parameter...");
-        LOG.info("Mode: {}", (dump?"dump":"beacon"));
-        LOG.info("GND Turtle Dump(s) as GZipped File(s): {}",  Arrays.toString(files));
+        LOG.info("CSV files: {}", Arrays.toString(files));
         LOG.info("File name of output file: {}", outputFile);
-        LOG.info("Language(s) to dump: {}", EFDExecutor.LANGUAGES);       
-        
+        LOG.info("Language(s) to dump: {}", EFDExecutor.getLANGUAGES());
+
         try {
-            final EFDExecutor exe = new EFDExecutor(files, outputFile);
-            if (dump) {
-                exe.makeDump();
-            } else {
-                exe.makeBeacon();
-            }
+            EFDExecutor.getEFDExecutor().init(files, outputFile, numberOfThreats, maxSubmittedTasks);
+            EFDExecutor.getEFDExecutor().makeDump();
         } catch (IOException ex) {
             LOG.error(ex.getMessage(), ex);
-            exit(1);
+            System.exit(1);
         }
 
         LOG.info("Done. Bye!");
